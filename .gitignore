@@ -1,0 +1,44 @@
+# Entornos virtuales
+venv/
+.env
+*.env
+
+# Archivos de configuración sensibles
+dbconfig.py
+
+# Cachés de Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Archivos de logs
+*.log
+
+# Archivos del sistema
+.DS_Store
+Thumbs.db
+
+# Archivos de Jupyter (si aplicara)
+.ipynb_checkpoints/
+
+# Archivos de compilación
+*.so
+*.dll
+*.dylib
+
+# Archivos temporales o de backup
+*.swp
+*.bak
+*.tmp
+*~
+
+# Archivos generados por herramientas
+resultados/
+descripciones/
+
+# Librerías (si las subes localmente, pero en general no se recomienda)
+site-packages/
+
+# Archivos de bases de datos locales
+*.sqlite3
+*.db

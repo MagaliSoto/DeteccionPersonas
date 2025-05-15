@@ -64,30 +64,64 @@ class DBManager:
             if conn.is_connected():
                 cursor.close()
                 conn.close()
+                
+    def parsear_descripcion(self, texto):
+        """
+        Extrae secciones del texto formateadas con títulos en negrita (**Título**)
+        y devuelve un diccionario {seccion: contenido}.
+        """
+        import re
+        bloques = re.split(r"\*\*(.*?)\*\*", texto)
+        mapa = {}
+        i = 1
+        while i < len(bloques):
+            clave = bloques[i].strip()
+            valor = bloques[i+1].strip()
+            if clave in mapa:
+                mapa[clave] += "\n" + valor
+            else:
+                mapa[clave] = valor
+            i += 2
+        return mapa
 
     def _fusionar_descripciones(self, anterior, nueva):
         """
-        Une dos descripciones, evitando duplicados y priorizando mayor nivel de detalle.
+        Une dos descripciones sección por sección, evitando duplicados y manteniendo formato limpio.
         """
         mapa_anterior = self.parsear_descripcion(anterior)
         mapa_nueva = self.parsear_descripcion(nueva)
+
+        orden = [
+            "Apariencia General", "Rostro", "Cabello", "Ropa", "Accesorios",
+            "Postura", "Acciones", "Entorno", "Otros Detalles"
+        ]
+
         mapa_final = {}
 
-        for clave in set(mapa_anterior) | set(mapa_nueva):
-            viejo = mapa_anterior.get(clave, "").strip()
-            nuevo = mapa_nueva.get(clave, "").strip()
+        for clave in set(mapa_anterior.keys()).union(mapa_nueva.keys()):
+            texto1 = mapa_anterior.get(clave, "").strip()
+            texto2 = mapa_nueva.get(clave, "").strip()
 
-            if not viejo:
-                mapa_final[clave] = nuevo
-            elif not nuevo:
-                mapa_final[clave] = viejo
-            elif nuevo != viejo:
-                conjunto = set(re.split(r' ?/ ?', viejo)) | set(re.split(r' ?/ ?', nuevo))
-                mapa_final[clave] = " / ".join(sorted(conjunto))
-            else:
-                mapa_final[clave] = viejo
+            frases1 = set([f.strip("-•* ").strip() for f in texto1.split("\n") if f.strip()])
+            frases2 = set([f.strip("-•* ").strip() for f in texto2.split("\n") if f.strip()])
 
-        return "\n\n".join(f"{k}\n\n{v}" for k, v in mapa_final.items())
+            frases_unidas = sorted(frases1.union(frases2))
+            if frases_unidas:
+                texto_final = "\n".join(f"* {f}" for f in frases_unidas)
+                mapa_final[clave] = texto_final
+
+        # Ordenar las secciones según la lista de orden predeterminada
+        descripcion_final = ""
+        for clave in orden:
+            if clave in mapa_final:
+                descripcion_final += f"**{clave}**\n{mapa_final[clave]}\n\n"
+
+        # Agregar secciones no contempladas en la lista de orden
+        for clave in mapa_final:
+            if clave not in orden:
+                descripcion_final += f"**{clave}**\n{mapa_final[clave]}\n\n"
+
+        return descripcion_final.strip()
 
     def _ejecutar_sql(self, sql, params, log_mensaje):
         """

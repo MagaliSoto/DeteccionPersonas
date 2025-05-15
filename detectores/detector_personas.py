@@ -14,15 +14,15 @@ class DetectorPersonas:
         self.ruta_video = ruta_video
         self.video = cv2.VideoCapture(ruta_video)
         self.modelo = YOLO(ruta_modelo)
+        
+        self.track_id_tiempo = {}  # Para controlar frecuencia de descripción por ID
+        self.intervalo_descripcion = 2  # segundos
+        self.carpeta_salida = carpeta_salida
+        os.makedirs(self.carpeta_salida, exist_ok=True)
 
         self.funcion_descripcion = funcion_descripcion
         self.executor = executor or ThreadPoolExecutor(max_workers=4)
-        self.detector_caras = DetectorCaras("Personas_Detectadas", carpeta_salida, self.executor)
-
-        self.track_id_tiempo = {}  # Para controlar frecuencia de descripción por ID
-        self.intervalo_descripcion = 5  # segundos
-        self.carpeta_salida = carpeta_salida
-        os.makedirs(self.carpeta_salida, exist_ok=True)
+        self.detector_caras = DetectorCaras(self.carpeta_salida, self.executor)
 
         self.db = DBManager()
 
@@ -36,11 +36,13 @@ class DetectorPersonas:
         x1, y1, x2, y2 = map(int, caja)
         imagen = frame[y1:y2, x1:x2]
 
-        carpeta_persona = os.path.join("Personas_Detectadas", f"persona_{id_persona}")
+        carpeta_persona = os.path.join(self.carpeta_salida, f"persona_{id_persona}")
         os.makedirs(carpeta_persona, exist_ok=True)
 
-        self.executor.submit(self.db.guardar_imagen_cuerpo, id_persona, carpeta_persona)
-        self.executor.submit(iu.guardar_imagen, imagen, id_persona, self.carpeta_salida)
+        #Guarda la ruta de la carpeta con las imagenes del cuerpo en la base de datos
+        self.executor.submit(self.db.guardar_imagen_cuerpo, id_persona, carpeta_persona)    
+        #Guarda las imagenes del cuerpo en una carpeta local y en un bucket s3
+        self.executor.submit(iu.guardar_imagen, imagen, id_persona, self.carpeta_salida, "Cuerpo")
 
         return imagen
 

@@ -1,7 +1,7 @@
 
 # 🧠 Sistema de Detección y Descripción de Personas en Video
 
-Este sistema detecta personas y rostros en tiempo real desde un flujo de video (por ejemplo, RTSP), recorta sus imágenes, analiza visualmente a las personas con IA (Google Gemini o VILA) y guarda sus descripciones e imágenes en una base de datos MySQL.
+Este sistema detecta personas y rostros en tiempo real desde un flujo de video (por ejemplo, RTSP), recorta sus imágenes, analiza visualmente a las personas con IA (Google Gemini o VILA), y guarda sus descripciones e imágenes en una base de datos MySQL **y en un bucket S3**.
 
 ---
 
@@ -16,14 +16,17 @@ Este sistema detecta personas y rostros en tiempo real desde un flujo de video (
 │   ├── detector_personas.py
 │   └── detector_caras.py
 ├── utils/
-│   ├── gemini_utils.py
-│   └── imagenes_utils.py
+│   ├── aws_utils.py               # ✅ Subida a S3
+│   ├── gemini_utils.py            # 🔑 Clave API de Gemini
+│   └── imagenes_utils.py          # 📸 Guardado local y S3
+├── resultados/                    # 🗂️ Carpeta temporal para resultados
 ├── db_manager.py
-├── dbconfig.py                # Incluido en el repositorio
+├── dbconfig.py                    # 🔧 Configuración DB
 ├── models/
-│   ├── yolo11-person.pt       # Incluido en el repositorio
-│   └── yolov11m-face.pt       # Incluido en el repositorio
-└── Personas_Detectadas/       # Carpeta de salida automática
+│   ├── yolo11-person.pt
+│   └── yolov11m-face.pt
+├── Personas_Detectadas/           # 📁 Salida automática
+└── README.md
 ```
 
 ---
@@ -34,7 +37,9 @@ Este sistema detecta personas y rostros en tiempo real desde un flujo de video (
 2. `detector_personas.py`: Detecta personas en cada frame utilizando YOLO y recorta su cuerpo.
 3. `detector_caras.py`: Envía la imagen a un servidor para detectar rostro y orientación.
 4. `gestor_descripciones.py`: Usa Gemini o VILA para generar una descripción detallada.
-5. `db_manager.py`: Guarda la información recolectada en una base de datos MySQL.
+5. `imagenes_utils.py`: Guarda imágenes en disco y las sube a AWS S3.
+6. `aws_utils.py`: Maneja la conexión y subida a un bucket S3.
+7. `db_manager.py`: Guarda la información recolectada en una base de datos MySQL.
 
 ---
 
@@ -48,34 +53,49 @@ Este sistema detecta personas y rostros en tiempo real desde un flujo de video (
 - google-generativeai
 - requests
 - mysql-connector-python
+- boto3
+- python-dotenv
 
 ---
 
 ## 🔐 Configuración
 
-1. **Clave API de Gemini**  
-   Abre `utils/gemini_utils.py` y reemplaza tu clave:
+### 1. Clave API de Gemini  
+Abre `utils/gemini_utils.py` y reemplaza tu clave:
 
-   ```python
-   genai.configure(api_key="TU_CLAVE_AQUI")
-   ```
+```python
+genai.configure(api_key="TU_CLAVE_AQUI")
+```
 
-2. **Conexión a Base de Datos**  
-   Asegúrate de tener un archivo `dbconfig.py` como este:
+O bien, colócala en `.env`:
 
-   ```python
-   def conectar():
-       import mysql.connector
-       return mysql.connector.connect(
-           host="localhost",
-           user="usuario",
-           password="contraseña",
-           database="nombre_base_datos"
-       )
-   ```
+```
+GEMINI_API_KEY=tu_clave
+```
 
-3. **Modelos YOLO**  
-   Ambos modelos `.pt` ya están incluidos en la carpeta `models/`.
+### 2. Conexión a Base de Datos  
+Archivo `dbconfig.py`:
+
+```python
+def conectar():
+    import mysql.connector
+    return mysql.connector.connect(
+        host="localhost",
+        user="usuario",
+        password="contraseña",
+        database="nombre_base_datos"
+    )
+```
+
+### 3. Configuración AWS S3  
+En el archivo `.env`, agrega:
+
+```
+AWS_ACCESS_KEY_ID=tu_clave
+AWS_SECRET_ACCESS_KEY=tu_secreto
+AWS_BUCKET_NAME=nombre_del_bucket
+AWS_REGION=us-east-1
+```
 
 ---
 
@@ -96,6 +116,7 @@ Presiona `ESC` para salir de la visualización en vivo.
 - **MediaPipe Pose**: Determinación de orientación corporal.
 - **InsightFace**: Detección facial robusta.
 - **VILA**: Alternativa para descripciones desde servidor HTTP.
+- **AWS S3**: Almacenamiento remoto de resultados.
 
 ---
 
@@ -117,11 +138,18 @@ CREATE TABLE registro_personas (
 
 ## 📸 Almacenamiento de Resultados
 
-Las imágenes se guardan automáticamente en la ruta:
+- **Local**:  
+  ```
+  Personas_Detectadas/persona_<ID>/
+  ```
 
-```
-Personas_Detectadas/persona_<ID>/
-```
+- **Remoto (S3)**:  
+  ```
+  s3://<nombre_bucket>/persona_<ID>/
+  ```
+
+- **Temporales**:  
+  Se almacenan brevemente en `resultados/` antes de subirlos.
 
 ---
 
@@ -129,6 +157,7 @@ Personas_Detectadas/persona_<ID>/
 
 ✅ Funcional en tiempo real  
 ✅ Modular y escalable  
+✅ Soporte para S3  
 ❌ No incluye pruebas automatizadas aún  
 
 ---
@@ -136,7 +165,6 @@ Personas_Detectadas/persona_<ID>/
 ## ✨ Créditos
 
 Desarrollado por Magali Soto.  
-Basado en modelos de código abierto de Ultralytics, Google AI, InsightFace y MediaPipe.
+Basado en modelos de código abierto de Ultralytics, Google AI, InsightFace, MediaPipe y AWS.
 
 ---
-

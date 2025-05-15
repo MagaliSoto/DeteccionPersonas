@@ -1,17 +1,17 @@
-import cv2, os, time, requests, numpy as np
+import cv2, os, requests, numpy as np
 from ultralytics import YOLO
 from db_manager import DBManager
+from utils import imagenes_utils as iu
 
 class DetectorCaras:
-    def __init__(self, ruta_salida, ruta_entrada, executor):
+    def __init__(self, carpeta_salida, executor, ruta_modelo="models\yolov11m-face.pt"):
         """
         Inicializa el detector de caras con un modelo YOLO específico,
         una ruta para guardar imágenes, y un ejecutor para tareas en segundo plano.
         """
-        self.modelo = YOLO("models/yolov11m-face.pt")
-        self.ruta_entrada = ruta_entrada
-        self.ruta_salida = ruta_salida
-        os.makedirs(self.ruta_salida, exist_ok=True)
+        self.modelo = YOLO(ruta_modelo)
+        self.carpeta_salida = carpeta_salida
+        os.makedirs(self.carpeta_salida, exist_ok=True)
 
         self.db = DBManager()
         self.executor = executor
@@ -50,10 +50,10 @@ class DetectorCaras:
 
     def detectar_caras_en_imagen(self, imagen, id_persona):
         """
-        Dado un frame y un ID de persona, detecta el rostro si existe y lo guarda en disco.
+        Dado un frame y un ID de persona, detecta el rostro si existe y lo guarda local, en la base de datos y en S3.
 
         Retorna:
-            - Coordenadas recorte rostro (x1, y1, x2, y2)
+            - Coordenadas del recorte de rostro (x1, y1, x2, y2) o None si no se detectó.
         """
         coordenadas, orientacion = self.detectar_rostro_remoto(imagen, id_persona)
 
@@ -72,17 +72,19 @@ class DetectorCaras:
             print(f"[ADVERTENCIA] ID {id_persona}: recorte vacío")
             return None
 
-        # Guardar imagen del rostro recortado
-        timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
-        carpeta_id = os.path.join(self.ruta_salida, f"persona_{id_persona}", "Caras")
-        os.makedirs(carpeta_id, exist_ok=True)
-        nombre_archivo = f"Cara_{id_persona}_{timestamp}.jpg"
-        ruta_archivo = os.path.join(carpeta_id, nombre_archivo)
-        cv2.imwrite(ruta_archivo, recorte)
+        # Guardar imagen (cara) en local y en S3 con executor
+        future_ruta = self.executor.submit(iu.guardar_imagen, recorte, id_persona, self.carpeta_salida, tipo="Cara")
 
-        print(f"[INFO] ID {id_persona}: Cara guardada en {ruta_archivo} (orientación: {orientacion})")
+        # Esperar resultado
+        ruta_guardada = future_ruta.result(timeout=10)  # espera máximo 10 seg
 
-        # Registrar en base de datos en segundo plano
-        self.executor.submit(self.db.guardar_imagen_cara, id_persona, carpeta_id)
+        if ruta_guardada:
+            print(f"[INFO] ID {id_persona}: Cara guardada en {ruta_guardada} (orientación: {orientacion})")
+            carpeta_id = os.path.dirname(ruta_guardada)
+            # Guardar en base de datos en segundo plano (no espera)
+            self.executor.submit(self.db.guardar_imagen_cara, id_persona, carpeta_id)
+        else:
+            print(f"[ERROR] ID {id_persona}: No se pudo guardar el rostro")
 
         return x1, y1, x2, y2
+

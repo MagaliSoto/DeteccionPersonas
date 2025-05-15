@@ -1,9 +1,10 @@
-import google.generativeai as genai
+import os, google.generativeai as genai
 from utils import imagenes_utils as iu
 from PIL import Image
 
-# Configuración de la API de Gemini
-genai.configure(api_key="AIzaSyDYpFaek9ZpYXlSkdd1hNblG1pQiNSERfw")
+# Configuración segura
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+
 modelo = genai.GenerativeModel("gemini-2.0-flash")
 
 def analizar_img_con_gemini(img_path, prompt):

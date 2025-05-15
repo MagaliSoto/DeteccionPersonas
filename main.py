@@ -7,11 +7,19 @@ from concurrent.futures import ThreadPoolExecutor
 
 def principal():
     # Dirección del flujo de video (puede ser RTSP, cámara IP, etc.)
-    ruta_video = "rtsp://admin:2Mini001.@192.168.0.195"
+    ruta_video = "video.mp4"
     carpeta_salida = "Personas_Detectadas"  # Carpeta donde se guardarán las imágenes detectadas
 
     # Gestor para generar descripciones automáticas de las personas
-    gestor_descripciones = GestorDescripciones()
+    prompt = (
+        "Analiza visualmente a la persona en la imagen y genera una descripción detallada, "
+        "estructurada en secciones claras. Usa títulos en negrita seguidos de listas con viñetas. "
+        "Las secciones deben incluir:\n\n"
+        "**Apariencia General**, **Rostro**, **Cabello**, **Ropa**, **Accesorios**, "
+        "**Postura**, **Acciones**, **Entorno**, **Otros Detalles**.\n\n"
+        "Sé claro y evita repetir lo mismo en varias secciones. Usa un estilo limpio y profesional."
+    )
+    gestor_descripciones = GestorDescripciones(prompt)
 
     # Ejecutores en segundo plano para tareas paralelas como descripciones y base de datos
     ejecutor = ThreadPoolExecutor(max_workers=4)
@@ -39,7 +47,7 @@ def principal():
             cola_resultados.put((indice, procesado))
             cola_frames.task_done()
 
-    # Iniciar hilo en modo demonio (termina automáticamente al cerrar el programa)
+    # Iniciar hilo en modo daemon (termina automáticamente al cerrar el programa)
     Thread(target=trabajador, daemon=True).start()
 
     # Obtener video y configurar resolución
@@ -59,8 +67,8 @@ def principal():
         frame = cv2.resize(frame, (ancho_frame, alto_frame))
 
         # Enviar solo uno de cada N frames para evitar sobrecarga
-        if contador_frames % 5 == 0 and not cola_frames.full():
-            cola_frames.put((contador_frames, frame.copy()))
+        #if contador_frames % 5 == 0 and not cola_frames.full():
+        cola_frames.put((contador_frames, frame.copy()))
 
         # Si hay resultados procesados disponibles, mostrarlos
         while not cola_resultados.empty():
