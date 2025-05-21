@@ -1,16 +1,46 @@
 import cv2
+import os
+import time
 from queue import Queue
 from threading import Thread
+from concurrent.futures import ThreadPoolExecutor
+from flask import Flask, Response
+
 from descripciones.gestor_descripciones import GestorDescripciones
 from detectores.detector_personas import DetectorPersonas
-from concurrent.futures import ThreadPoolExecutor
+
+# Forzar transporte TCP en FFMPEG (muy útil para RTSP)
+os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
+
+app = Flask(__name__)
+
+frame_global = None
+
+def generate():
+    global frame_global
+    while True:
+        if frame_global is None:
+            time.sleep(0.1)
+            continue
+        ret, jpeg = cv2.imencode('.jpg', frame_global)
+        if not ret:
+            continue
+        frame_bytes = jpeg.tobytes()
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+
+@app.route('/video_feed')
+def video_feed():
+    return Response(generate(),
+                    mimetype='multipart/x-mixed-replace; boundary=frame')
+
+def servidor_flask():
+    app.run(host='0.0.0.0', port=5000, threaded=True)
 
 def principal():
-    # Dirección del flujo de video (puede ser RTSP, cámara IP, etc.)
-    ruta_video = "video.mp4"
-    carpeta_salida = "Personas_Detectadas"  # Carpeta donde se guardarán las imágenes detectadas
+    ruta_video = os.getenv("RUTA_VIDEO", "rtsp://admin:2Mini001.@192.168.0.195/cam/realmonitor?channel=1&subtype=0")
+    carpeta_salida = "Personas_Detectadas"
 
-    # Gestor para generar descripciones automáticas de las personas
     prompt = (
         "Analiza visualmente a la persona en la imagen y genera una descripción detallada, "
         "estructurada en secciones claras. Usa títulos en negrita seguidos de listas con viñetas. "
@@ -19,12 +49,9 @@ def principal():
         "**Postura**, **Acciones**, **Entorno**, **Otros Detalles**.\n\n"
         "Sé claro y evita repetir lo mismo en varias secciones. Usa un estilo limpio y profesional."
     )
+
     gestor_descripciones = GestorDescripciones(prompt)
-
-    # Ejecutores en segundo plano para tareas paralelas como descripciones y base de datos
     ejecutor = ThreadPoolExecutor(max_workers=4)
-
-    # Inicialización del detector de personas
     detector = DetectorPersonas(
         ruta_video,
         carpeta_salida,
@@ -32,11 +59,9 @@ def principal():
         executor=ejecutor
     )
 
-    # Colas para enviar y recibir frames entre hilos
     cola_frames = Queue(maxsize=5)
     cola_resultados = Queue(maxsize=5)
 
-    # Hilo trabajador que procesa los frames usando el detector
     def trabajador():
         while True:
             item = cola_frames.get()
@@ -47,48 +72,45 @@ def principal():
             cola_resultados.put((indice, procesado))
             cola_frames.task_done()
 
-    # Iniciar hilo en modo daemon (termina automáticamente al cerrar el programa)
     Thread(target=trabajador, daemon=True).start()
+    Thread(target=servidor_flask, daemon=True).start()
 
-    # Obtener video y configurar resolución
-    video = detector.video
-    fps = int(video.get(cv2.CAP_PROP_FPS)) or 30
-    ancho_frame, alto_frame = 1280, 720
-    contador_frames = 0
-    ultimo_frame_procesado = None
+    global frame_global
 
-    # Bucle principal de lectura del video
-    while video.isOpened():
-        ret, frame = video.read()
-        if not ret:
-            break
+    while True:
+        print("Intentando conectar al stream...")
+        video = cv2.VideoCapture(ruta_video, cv2.CAP_FFMPEG)  # <-- FORZAR FFMPEG
+        if not video.isOpened():
+            print("Error al abrir el stream. Reintentando en 5 segundos...")
+            video.release()
+            time.sleep(5)
+            continue
 
-        # Redimensionar el frame a la resolución deseada
-        frame = cv2.resize(frame, (ancho_frame, alto_frame))
+        fps = int(video.get(cv2.CAP_PROP_FPS)) or 30
+        ancho_frame, alto_frame = 1280, 720
+        contador_frames = 0
+        ultimo_frame_procesado = None
 
-        # Enviar solo uno de cada N frames para evitar sobrecarga
-        #if contador_frames % 5 == 0 and not cola_frames.full():
-        cola_frames.put((contador_frames, frame.copy()))
+        while video.isOpened():
+            ret, frame = video.read()
+            if not ret:
+                print("Error al leer frame, reiniciando stream...")
+                video.release()
+                time.sleep(5)
+                break
 
-        # Si hay resultados procesados disponibles, mostrarlos
-        while not cola_resultados.empty():
-            _, ultimo_frame_procesado = cola_resultados.get()
+            frame = cv2.resize(frame, (ancho_frame, alto_frame))
 
-        # Mostrar el último frame procesado, o el frame crudo si no hay
-        mostrar = ultimo_frame_procesado if ultimo_frame_procesado is not None else frame
-        cv2.imshow("Detección", mostrar)
+            if contador_frames % 5 == 0 and not cola_frames.full():
+                cola_frames.put((contador_frames, frame.copy()))
 
-        contador_frames += 1
+            while not cola_resultados.empty():
+                _, ultimo_frame_procesado = cola_resultados.get()
 
-        # Presionar ESC (27) para salir
-        if cv2.waitKey(1) & 0xFF == 27:
-            break
+            mostrar = ultimo_frame_procesado if ultimo_frame_procesado is not None else frame
+            frame_global = mostrar
 
-    # Finalizar correctamente
-    cola_frames.put(None)           # Señal para terminar el hilo
-    video.release()                 # Liberar la cámara o video
-    cv2.destroyAllWindows()         # Cerrar ventanas de OpenCV
-    ejecutor.shutdown(wait=True)   # Esperar que terminen los hilos
+            contador_frames += 1
 
 if __name__ == "__main__":
     principal()

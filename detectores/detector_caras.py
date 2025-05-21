@@ -4,7 +4,7 @@ from db_manager import DBManager
 from utils import imagenes_utils as iu
 
 class DetectorCaras:
-    def __init__(self, carpeta_salida, executor, ruta_modelo="models\yolov11m-face.pt"):
+    def __init__(self, carpeta_salida, executor, ruta_modelo="models/yolov11m-face.pt"):
         """
         Inicializa el detector de caras con un modelo YOLO específico,
         una ruta para guardar imágenes, y un ejecutor para tareas en segundo plano.

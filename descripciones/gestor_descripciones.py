@@ -56,17 +56,17 @@ class GestorDescripciones:
         except Exception as e:
             print(f"[ERROR] Gemini: ID {id_persona} - {e}")
 
-    def describir_con_vila(self, imagen, id_persona):
-        """
-        Alternativa: usa un servicio HTTP externo (VILA) para describir la imagen.
-        """
+    def describir_con_vila(self, imagen, id_persona, prompt):
         try:
-            # Codificar imagen a formato JPEG
             _, img_encoded = cv2.imencode(".jpg", cv2.cvtColor(imagen, cv2.COLOR_BGR2RGB))
-            files = {'file': ('persona.jpg', img_encoded.tobytes(), 'image/jpeg')}
+            files = {
+                'file': ('persona.jpg', img_encoded.tobytes(), 'image/jpeg'),
+            }
+            data = {
+                'prompt': prompt
+            }
 
-            # Enviar al servidor VILA
-            r = requests.post("http://18.228.157.19:7000/describe_image_file/", files=files, timeout=60)
+            r = requests.post("http://18.228.157.19:7000/describe_image_file/", files=files, data=data, timeout=60)
 
             if r.status_code == 200:
                 self.guardar(r.text, id_persona)
@@ -75,3 +75,4 @@ class GestorDescripciones:
                 print(f"[ERROR] VILA: respuesta {r.status_code}")
         except Exception as e:
             print(f"[ERROR] VILA: ID {id_persona} - {e}")
+
