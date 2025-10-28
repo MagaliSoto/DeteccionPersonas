@@ -1,11 +1,13 @@
 import cv2
 import time
 from detectores.detector_personas import DetectorPersonas
+from smstreamer import Streamer  # <- importamos el streamer
 
 def main():
     # ---------------- CONFIGURACIÓN ----------------
     rtsp_in = "rtsp://admin:2Mini001.@192.168.0.204"  # Stream de entrada
     ancho, alto = 1080, 1920
+    puerto_stream = 8080  # puerto donde se verá el video por navegador
 
     # Inicializar detector YOLO
     detector = DetectorPersonas()
@@ -16,35 +18,35 @@ def main():
         print("[ERROR] No se pudo abrir la cámara RTSP.")
         return
 
-    # Crear ventana normal
-    cv2.namedWindow("Detección de Personas", cv2.WINDOW_NORMAL)
-    cv2.resizeWindow("Detección de Personas", 960, 540)  # Tamaño de ventana (opcional)
+    # Inicializar SMStreamer
+    streamer = Streamer(width=ancho, height=alto, fps=20, port=puerto_stream)
 
-    print("[INFO] Mostrando video. Presiona 'q' para salir.")
+    print(f"[INFO] Mostrando video por http://<IP_RASPBERRY>:{puerto_stream}")
+    print("[INFO] Presiona Ctrl+C para salir.")
 
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            print("[WARN] Frame inválido. Reintentando...")
-            time.sleep(0.5)
-            continue
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                print("[WARN] Frame inválido. Reintentando...")
+                time.sleep(0.5)
+                continue
 
-        # Redimensionar frame si querés mantener la resolución deseada
-        frame = cv2.resize(frame, (ancho, alto))
+            # Redimensionar frame si querés mantener la resolución deseada
+            frame = cv2.resize(frame, (ancho, alto))
 
-        # Procesar detección
-        frame_procesado = detector.procesar_frame(frame)
+            # Procesar detección
+            frame_procesado = detector.procesar_frame(frame)
 
-        # Mostrar video en ventana normal
-        cv2.imshow("Detección de Personas", frame_procesado)
+            # Enviar frame al streamer
+            streamer.send(frame_procesado)
 
-        # Salir con 'q'
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            print("[INFO] Finalizando transmisión...")
-            break
+    except KeyboardInterrupt:
+        print("[INFO] Finalizando transmisión...")
 
-    cap.release()
-    cv2.destroyAllWindows()
+    finally:
+        cap.release()
+        streamer.close()
 
 if __name__ == "__main__":
     main()
